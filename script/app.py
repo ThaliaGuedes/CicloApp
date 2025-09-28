@@ -5,6 +5,7 @@ from datetime import datetime
 from utils import calculate_cycle_phase, generate_phase_message, load_email_template
 from boto3.dynamodb.conditions import Attr
 
+
 app = Flask(__name__)
 
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
