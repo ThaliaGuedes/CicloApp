@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 def calculate_cycle_phase(last_period_start, cycle_length=30):
     today = datetime.utcnow().date()
@@ -26,7 +27,7 @@ def generate_phase_message(phase):
     return messages.get(phase, "Não foi possível determinar a fase.")
 
 def load_email_template(phase, message):
-    template_path = 'script/template.html'
-    with open(template_path, 'r', encoding='utf-8') as f:
+    template_path = Path(__file__).with_name('template.html')
+    with template_path.open('r', encoding='utf-8') as f:
         template = f.read()
     return template.replace('{{ phase }}', phase).replace('{{ message }}', message)

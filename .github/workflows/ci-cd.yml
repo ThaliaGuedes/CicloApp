@@ -1,0 +1,96 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ciclo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+    steps:
+      - name: Baixar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Executar testes
+        run: python -m pytest -q
+
+      - name: Configurar AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Validar template SAM
+        run: sam validate --template-file template.yaml --region "$AWS_REGION"
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      SES_SENDER_EMAIL: ${{ secrets.SES_SENDER_EMAIL }}
+    steps:
+      - name: Baixar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Validar configuracao de deploy
+        shell: bash
+        run: |
+          test -n "$AWS_REGION" || { echo "Configure o secret AWS_REGION no GitHub"; exit 1; }
+          test -n "$AWS_DEPLOY_ROLE_ARN" || { echo "Configure o secret AWS_DEPLOY_ROLE_ARN no GitHub"; exit 1; }
+          test -n "$SES_SENDER_EMAIL" || { echo "Configure o secret SES_SENDER_EMAIL no GitHub"; exit 1; }
+
+      - name: Assumir role AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Construir aplicacao
+        run: sam build --template-file template.yaml
+
+      - name: Publicar stack
+        run: >-
+          sam deploy
+          --template-file .aws-sam/build/template.yaml
+          --stack-name ciclo-app
+          --region "$AWS_REGION"
+          --resolve-s3
+          --capabilities CAPABILITY_IAM
+          --no-confirm-changeset
+          --no-fail-on-empty-changeset
+          --parameter-overrides SenderEmail="$SES_SENDER_EMAIL"
+
+      - name: Mostrar URL publicada
+        run: >-
+          aws cloudformation describe-stacks
+          --stack-name ciclo-app
+          --query "Stacks[0].Outputs[?OutputKey=='WebUrl'].OutputValue | [0]"
+          --output text
