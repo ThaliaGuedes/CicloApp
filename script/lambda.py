@@ -1,26 +1,30 @@
+import os
 import uuid
-from flask import Flask, json, render_template, request
-import boto3
 from datetime import datetime
-from utils import calculate_cycle_phase, generate_phase_message, load_email_template
+from functools import lru_cache
+
+import boto3
+import serverless_wsgi
 from boto3.dynamodb.conditions import Attr
+from flask import Flask, render_template, request
+
+from utils import calculate_cycle_phase, generate_phase_message, load_email_template
 
 
-app = Flask(__name__)
-
-dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-ses = boto3.client('ses', region_name='us-east-1')
-client = boto3.client("secretsmanager", region_name='us-east-1')
-response = client.get_secret_value(SecretId='app-ciclo')
-
-secret = json.loads(response['SecretString'])
-table_name = secret['DYNAMO_TABLE']
-table = dynamodb.Table(table_name)
-pk_dynamo = secret['pk_dynamo']
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
 
 
+@lru_cache(maxsize=1)
+def get_aws_services():
+    region = os.getenv('AWS_REGION', 'us-east-1')
+    dynamodb = boto3.resource('dynamodb', region_name=region)
+    ses = boto3.client('ses', region_name=region)
+    table = dynamodb.Table(os.environ['DYNAMO_TABLE'])
+    return table, ses, os.getenv('DYNAMO_PK', 'user_id'), os.environ['SENDER_EMAIL']
 
-def verify_email(email):
+
+
+def verify_email(email, ses):
     response = ses.list_verified_email_addresses()
     if email in response["VerifiedEmailAddresses"]:
         return True
@@ -36,6 +40,7 @@ def home():
 
 @app.route('/register', methods=['POST'])
 def register():
+    table, ses, pk_dynamo, sender_email = get_aws_services()
     pk_hash = str(uuid.uuid4())
     name = request.form['name']
     email = request.form['email']
@@ -49,17 +54,17 @@ def register():
     if response['Items']:
         user = response['Items'][0]
         if user.get('verified', False):
-            send_email_to_user(email, period_start, period_end, cycle_length)
+            send_email_to_user(email, period_start, cycle_length, ses, sender_email)
             return f"{email} já está cadastrado e verificado! 💖"
 
         else:
-            send_email_to_user(email, period_start, period_end, cycle_length)
+            send_email_to_user(email, period_start, cycle_length, ses, sender_email)
             return (
                 f"💌 {name}, já temos seu cadastro mas seu e-mail ainda não foi confirmado. "
                 "Verifique sua caixa de entrada e confirme o e-mail da AWS para ativar seu cadastro. 🌸"
             )
 
-    if not verify_email(email):
+    if not verify_email(email, ses):
         table.put_item(Item={
             pk_dynamo: pk_hash,
             'email': email,
@@ -85,7 +90,7 @@ def register():
             'verified': True
         })
 
-        success = send_email_to_user(email, period_start, period_end, cycle_length)
+        success = send_email_to_user(email, period_start, cycle_length, ses, sender_email)
 
         if success:
             return f"{name}, seu cadastro foi realizado com sucesso! 💖 Você já recebeu o primeiro e-mail do seu ciclo."
@@ -93,16 +98,15 @@ def register():
             return f"{name}, seu cadastro foi salvo, mas houve um problema ao enviar o e-mail. Tente novamente mais tarde. 💌"
 
 
-def send_email_to_user(email, period_start, period_end, cycle_length):
+def send_email_to_user(email, period_start, cycle_length, ses, sender_email):
     period_start = datetime.strptime(period_start, '%Y-%m-%d').date()
-    period_end = datetime.strptime(period_end, '%Y-%m-%d').date()
 
-    phase = calculate_cycle_phase(period_start, period_end, cycle_length)
+    phase = calculate_cycle_phase(period_start, cycle_length)
     message_text = generate_phase_message(phase)
     html_body = load_email_template(phase, message_text)
 
     response = ses.send_email(
-        Source='thaliaguedes@myyahoo.com',
+        Source=sender_email,
         Destination={'ToAddresses': [email]},
         Message={
             'Subject': {'Data': f"[Ciclo Menstrual] Sua fase da semana: {phase}"},
@@ -114,11 +118,14 @@ def send_email_to_user(email, period_start, period_end, cycle_length):
     )
     if 'MessageId' in response:
         print(f"E-mail enviado com sucesso! MessageId: {response['MessageId']}")
-        sucesso = True
     else:
         print("E-mail não foi enviado.")
-        sucesso = False
+    return 'MessageId' in response
+
+
+def handler(event, context):
+    return serverless_wsgi.handle_request(app, event, context)
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=os.getenv('FLASK_DEBUG') == '1')
