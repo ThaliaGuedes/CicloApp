@@ -17,6 +17,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
     steps:
       - name: Baixar codigo
         uses: actions/checkout@v4
@@ -38,7 +40,7 @@ jobs:
         uses: aws-actions/setup-sam@v2
 
       - name: Validar template SAM
-        run: sam validate --template-file template.yaml
+        run: sam validate --template-file template.yaml --region "$AWS_REGION"
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -48,9 +50,9 @@ jobs:
       contents: read
       id-token: write
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-      SES_SENDER_EMAIL: ${{ vars.SES_SENDER_EMAIL }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      SES_SENDER_EMAIL: ${{ secrets.SES_SENDER_EMAIL }}
     steps:
       - name: Baixar codigo
         uses: actions/checkout@v4
@@ -61,15 +63,15 @@ jobs:
       - name: Validar configuracao de deploy
         shell: bash
         run: |
-          test -n "$AWS_REGION" || { echo "Configure a variavel AWS_REGION no GitHub"; exit 1; }
-          test -n "$AWS_DEPLOY_ROLE_ARN" || { echo "Configure AWS_DEPLOY_ROLE_ARN no GitHub"; exit 1; }
-          test -n "$SES_SENDER_EMAIL" || { echo "Configure SES_SENDER_EMAIL no GitHub"; exit 1; }
+          test -n "$AWS_REGION" || { echo "Configure o secret AWS_REGION no GitHub"; exit 1; }
+          test -n "$AWS_DEPLOY_ROLE_ARN" || { echo "Configure o secret AWS_DEPLOY_ROLE_ARN no GitHub"; exit 1; }
+          test -n "$SES_SENDER_EMAIL" || { echo "Configure o secret SES_SENDER_EMAIL no GitHub"; exit 1; }
 
       - name: Assumir role AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Construir aplicacao
         run: sam build --template-file template.yaml
