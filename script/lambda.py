@@ -12,6 +12,7 @@ from utils import calculate_cycle_phase, generate_phase_message, load_email_temp
 
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
+DEFAULT_CYCLE_LENGTH = 30
 
 
 @lru_cache(maxsize=1)
@@ -45,8 +46,7 @@ def register():
     name = request.form['name']
     email = request.form['email']
     period_start = request.form['period_start']
-    period_end = request.form['period_end']
-    cycle_length = int(request.form['cycle_length'])
+    cycle_length = DEFAULT_CYCLE_LENGTH
 
     response = table.scan(
         FilterExpression=Attr('email').eq(email)
@@ -70,7 +70,6 @@ def register():
             'email': email,
             'name': name,
             'period_start': period_start,
-            'period_end': period_end,
             'cycle_length': cycle_length,
             'verified': False
         })
@@ -85,7 +84,6 @@ def register():
             'email': email,
             'name': name,
             'period_start': period_start,
-            'period_end': period_end,
             'cycle_length': cycle_length,
             'verified': True
         })

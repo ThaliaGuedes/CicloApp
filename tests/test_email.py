@@ -15,9 +15,42 @@ spec.loader.exec_module(ciclo_lambda)
 
 def test_home_page_loads_without_aws():
     response = ciclo_lambda.app.test_client().get('/')
+    html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'Cadastre seu Ciclo' in response.get_data(as_text=True)
+    assert 'Cadastre seu Ciclo' in html
+    assert 'name="period_start"' in html
+    assert 'name="period_end"' not in html
+    assert 'name="cycle_length"' not in html
+    assert 'name="viewport"' in html
+
+
+def test_register_uses_default_cycle_without_extra_date_fields(monkeypatch):
+    table = Mock()
+    table.scan.return_value = {'Items': []}
+    ses = Mock()
+    ses.list_verified_email_addresses.return_value = {
+        'VerifiedEmailAddresses': ['pessoa@example.com']
+    }
+    ses.send_email.return_value = {'MessageId': 'message-id'}
+    monkeypatch.setattr(
+        ciclo_lambda,
+        'get_aws_services',
+        lambda: (table, ses, 'user_id', 'remetente@example.com'),
+    )
+
+    response = ciclo_lambda.app.test_client().post('/register', data={
+        'name': 'Pessoa',
+        'email': 'pessoa@example.com',
+        'period_start': '2026-10-01',
+    })
+
+    assert response.status_code == 200
+    assert 'cadastro foi realizado com sucesso' in response.get_data(as_text=True)
+    saved_user = table.put_item.call_args.kwargs['Item']
+    assert saved_user['cycle_length'] == 30
+    assert 'period_end' not in saved_user
+    ses.send_email.assert_called_once()
 
 
 @pytest.mark.parametrize(

@@ -2,8 +2,13 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cadastro do Ciclo 💖</title>
 <style>
+* {
+    box-sizing: border-box;
+}
+
 body {
     font-family: 'Comic Sans MS', cursive, sans-serif;
     background: #ffe4e1;
@@ -11,8 +16,10 @@ body {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
+    min-height: 100dvh;
     margin: 0;
     position: relative;
+    padding: 20px 12px;
 }
 
 /* Coração de fundo */
@@ -34,19 +41,24 @@ body {
 .form-container {
     position: relative;
     z-index: 1;
-    width: 90%;
-    max-width: 400px;
+    width: min(100%, 420px);
     background: rgba(255, 240, 245, 0.9);
-    padding: 20px;
+    padding: clamp(20px, 6vw, 32px);
     border-radius: 15px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     text-align: center;
 }
 
+form {
+    text-align: left;
+}
+
 input, button {
-    width: 90%;
-    padding: 10px;
-    margin: 8px 0;
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    padding: 12px;
+    margin: 8px 0 16px;
     border-radius: 10px;
     border: 1px solid #ff69b4;
     font-size: 1rem;
@@ -66,20 +78,27 @@ button:hover {
 
 label {
     display: block;
-    text-align: left;
-    margin-left: 5%;
     font-weight: bold;
     color: #ff1493;
-    margin-top: 5px;
+    margin-top: 12px;
 }
 
-h2 { color: #e91e63; margin-bottom: 15px; }
+h2 {
+    color: #e91e63;
+    margin: 0 0 20px;
+}
 
-/* Responsividade */
+.form-note {
+    color: #6b4052;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: -4px 0 18px;
+}
+
 @media (max-width: 500px) {
-    .form-container { width: 95%; padding: 15px; }
-    input, button { width: 95%; font-size: 0.9rem; padding: 8px; }
-    h2 { font-size: 1.2rem; }
+    .heart-bg {
+        font-size: 10rem;
+    }
 }
 </style>
 </head>
@@ -96,14 +115,10 @@ h2 { color: #e91e63; margin-bottom: 15px; }
         <label>Email:</label>
         <input type="email" name="email" required placeholder="email@exemplo.com">
 
-        <label>Início do Período:</label>
-        <input type="date" name="period_start" required>
+        <label for="period_start">Data de início do último período:</label>
+        <input type="date" id="period_start" name="period_start" required>
 
-        <label>Fim do Período:</label>
-        <input type="date" name="period_end" required>
-
-        <label>Duração do Ciclo (dias):</label>
-        <input type="number" name="cycle_length" value="30" min="20" max="40">
+        <p class="form-note">A estimativa da fase usa um ciclo padrão de 30 dias.</p>
 
         <button type="submit">💌 Cadastrar</button>
     </form>
