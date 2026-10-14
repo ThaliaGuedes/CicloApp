@@ -41,28 +41,55 @@ def home():
 
 @app.route('/register', methods=['POST'])
 def register():
-    table, ses, pk_dynamo, sender_email = get_aws_services()
     pk_hash = str(uuid.uuid4())
     name = request.form['name']
     email = request.form['email']
     period_start = request.form['period_start']
+    period_end = request.form['period_end']
     cycle_length = DEFAULT_CYCLE_LENGTH
+
+    try:
+        period_start_date = datetime.strptime(period_start, '%Y-%m-%d').date()
+        period_end_date = datetime.strptime(period_end, '%Y-%m-%d').date()
+    except ValueError:
+        return 'Informe datas válidas para o início e o fim do período.', 400
+    if period_end_date < period_start_date:
+        return 'A data de fim não pode ser anterior à data de início.', 400
+
+    table, ses, pk_dynamo, sender_email = get_aws_services()
 
     response = table.scan(
         FilterExpression=Attr('email').eq(email)
     )
     if response['Items']:
         user = response['Items'][0]
-        if user.get('verified', False):
-            send_email_to_user(email, period_start, cycle_length, ses, sender_email)
-            return f"{email} já está cadastrado e verificado! 💖"
-
-        else:
-            send_email_to_user(email, period_start, cycle_length, ses, sender_email)
+        if not user.get('verified', False) and not verify_email(email, ses):
+            user.update({
+                'name': name,
+                'period_start': period_start,
+                'period_end': period_end,
+                'cycle_length': cycle_length,
+            })
+            table.put_item(Item=user)
             return (
                 f"💌 {name}, já temos seu cadastro mas seu e-mail ainda não foi confirmado. "
                 "Verifique sua caixa de entrada e confirme o e-mail da AWS para ativar seu cadastro. 🌸"
             )
+
+        user.update({
+            'name': name,
+            'period_start': period_start,
+            'period_end': period_end,
+            'cycle_length': cycle_length,
+            'verified': True,
+        })
+        table.put_item(Item=user)
+        success = send_email_to_user(
+            email, period_start, period_end, cycle_length, ses, sender_email
+        )
+        if success:
+            return f"{name}, seu cadastro existente foi atualizado e a mensagem foi enviada! 💖"
+        return f"{name}, seu cadastro foi atualizado, mas houve um problema ao enviar o e-mail. 💌"
 
     if not verify_email(email, ses):
         table.put_item(Item={
@@ -70,6 +97,7 @@ def register():
             'email': email,
             'name': name,
             'period_start': period_start,
+            'period_end': period_end,
             'cycle_length': cycle_length,
             'verified': False
         })
@@ -84,11 +112,14 @@ def register():
             'email': email,
             'name': name,
             'period_start': period_start,
+            'period_end': period_end,
             'cycle_length': cycle_length,
             'verified': True
         })
 
-        success = send_email_to_user(email, period_start, cycle_length, ses, sender_email)
+        success = send_email_to_user(
+            email, period_start, period_end, cycle_length, ses, sender_email
+        )
 
         if success:
             return f"{name}, seu cadastro foi realizado com sucesso! 💖 Você já recebeu o primeiro e-mail do seu ciclo."
@@ -96,10 +127,11 @@ def register():
             return f"{name}, seu cadastro foi salvo, mas houve um problema ao enviar o e-mail. Tente novamente mais tarde. 💌"
 
 
-def send_email_to_user(email, period_start, cycle_length, ses, sender_email):
+def send_email_to_user(email, period_start, period_end, cycle_length, ses, sender_email):
     period_start = datetime.strptime(period_start, '%Y-%m-%d').date()
+    period_end = datetime.strptime(period_end, '%Y-%m-%d').date()
 
-    phase = calculate_cycle_phase(period_start, cycle_length)
+    phase = calculate_cycle_phase(period_start, period_end, cycle_length)
     message_text = generate_phase_message(phase)
     html_body = load_email_template(phase, message_text)
 

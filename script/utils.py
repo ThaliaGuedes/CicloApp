@@ -1,15 +1,24 @@
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
-def calculate_cycle_phase(last_period_start, cycle_length=30):
+
+def calculate_cycle_phase(last_period_start: date, period_end: date | None = None, cycle_length: int = 30) -> str:
+    if cycle_length <= 0:
+        raise ValueError('cycle_length must be greater than zero')
+    if period_end is not None and period_end < last_period_start:
+        raise ValueError('period_end cannot be before last_period_start')
+
     today = datetime.utcnow().date()
     day_in_cycle = (today - last_period_start).days % cycle_length
+    period_duration = (
+        (period_end - last_period_start).days + 1 if period_end else 6
+    )
 
-    if day_in_cycle < 6:
+    if day_in_cycle < period_duration:
         return "Fase Menstrual 🩸"
-    elif 6 <= day_in_cycle < 10:
+    elif day_in_cycle < 10:
         return "Fase Folicular 🌿"
-    elif 10 <= day_in_cycle <= 15:
+    elif day_in_cycle <= 15:
         return "Fase Fértil 🌱"
     elif day_in_cycle == 16:
         return "Ovulação 🌸"
@@ -25,6 +34,7 @@ def generate_phase_message(phase):
         "Fase Lútea 🌙": "Tá na fase lútea 🌙… um pouco sensível é normal. Se sentir vontade de descansar ou reclamar de algo bobo, respira fundo e lembra: seu(a) parceiro(a) só quer te ver bem ❤️",
     }
     return messages.get(phase, "Não foi possível determinar a fase.")
+
 
 def load_email_template(phase, message):
     template_path = Path(__file__).with_name('template.html')
